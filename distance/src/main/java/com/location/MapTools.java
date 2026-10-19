@@ -2,7 +2,7 @@ package com.location;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import java.util.ArrayList;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -21,6 +21,8 @@ public class MapTools {
             "https://api.openrouteservice.org/geocode/search";
     private static final String DIRECTIONS_URL =
             "https://api.openrouteservice.org/v2/directions/driving-car";
+    private static final String ROUTE_GEOJSON_URL =
+        "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
     private static MapTools mapTools;
     private final String apiKey = System.getenv("MAP_API_KEY");
     private final HttpClient httpClient;
@@ -250,6 +252,96 @@ public class MapTools {
                 .readTree(response.body())
                 .path("routes")
                 .path(0);
+    }
+
+    /**
+     * Determines the route from one address to another and returns it to show on a map.
+     * @param startingAddress   The address the route begins at
+     * @param endingAddress The address the route ends on
+     * @return The Driving route to be plotted on a map
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    public DrivingRoute getDrivingRoute(Address startingAddress, Address endingAddress) 
+        throws IOException, InterruptedException {
+
+        Coordinates startCoordinates = getCoordinates(startingAddress);
+        Coordinates endCoordinates = getCoordinates(endingAddress);
+
+        ArrayList<Coordinates> routePoints = getRoutePoints(
+                startCoordinates,
+                endCoordinates
+        );
+
+        MapLocation startingLocation = new MapLocation(
+                startingAddress,
+                startCoordinates
+        );
+
+        MapLocation endingLocation = new MapLocation(
+                endingAddress,
+                endCoordinates
+        );
+
+        return new DrivingRoute(
+                startingLocation,
+                endingLocation,
+                routePoints
+        );
+    }
+
+    /**
+     * Determines all the points to show on the route to be plotted on a map
+     * @param start The address to begin on as a coordinate
+     * @param end The address to end at as a coordinate
+     * @return A list of all points to be put on the route
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    private ArrayList<Coordinates> getRoutePoints(Coordinates start,Coordinates end
+    ) throws IOException, InterruptedException {
+
+        String requestBody =
+                "{ \"coordinates\": [[" +
+                        start.getLongitude() + "," + start.getLatitude() +
+                        "],[" +
+                        end.getLongitude() + "," + end.getLatitude() +
+                        "]]}";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(ROUTE_GEOJSON_URL))
+                .header("Authorization", apiKey)
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(
+                request,
+                HttpResponse.BodyHandlers.ofString()
+        );
+
+        if (response.statusCode() != 200) {
+            throw new IOException("Could not get the driving route.");
+        }
+
+        JsonNode points = objectMapper
+                .readTree(response.body())
+                .path("features")
+                .path(0)
+                .path("geometry")
+                .path("coordinates");
+
+        ArrayList<Coordinates> routePoints = new ArrayList<>();
+
+        for (JsonNode point : points) {
+            double longitude = point.get(0).asDouble();
+            double latitude = point.get(1).asDouble();
+
+            routePoints.add(new Coordinates(latitude, longitude));
+        }
+
+        return routePoints;
     }
 
     /**

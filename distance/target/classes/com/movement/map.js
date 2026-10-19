@@ -1,25 +1,70 @@
 var map = null;
-var marker = null;
+var markers = [];
+var routeLine = null;
 
-window.showLocation = function(latitude, longitude, address) {
-    var location = [latitude, longitude];
-
-    if (map == null) {
-        map = L.map("map").setView(location, 14);
-
-        L.tileLayer(
-            "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-            {
-                maxZoom: 19,
-                attribution: "&copy; OpenStreetMap contributors"
-            }
-        ).addTo(map);
-
-        marker = L.marker(location).addTo(map);
-    } else {
-        map.setView(location, 14);
-        marker.setLatLng(location);
+function createMap() {
+    if (map !== null) {
+        return;
     }
 
-    marker.bindPopup(address).openPopup();
+    map = L.map("map").setView([32.7765, -79.9311], 11);
+
+    L.tileLayer(
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        {
+            maxZoom: 19,
+            attribution: "&copy; OpenStreetMap contributors"
+        }
+    ).addTo(map);
+}
+
+window.showLocations = function(locations) {
+    createMap();
+
+    markers.forEach(function(marker) {
+        marker.remove();
+    });
+
+    markers = [];
+
+    var bounds = L.latLngBounds();
+
+    locations.forEach(function(location) {
+        var position = [location.latitude, location.longitude];
+
+        var marker = L.marker(position)
+            .addTo(map)
+            .bindPopup(location.address);
+
+        markers.push(marker);
+        bounds.extend(position);
+    });
+
+    if (locations.length === 1) {
+        map.setView(
+            [locations[0].latitude, locations[0].longitude],
+            14
+        );
+    } else {
+        map.fitBounds(bounds, { padding: [40, 40] });
+    }
+};
+
+window.showRoute = function(routePoints) {
+    if (routeLine !== null) {
+        routeLine.remove();
+    }
+
+    routeLine = L.polyline(
+        routePoints,
+        {
+            color: "blue",
+            weight: 5
+        }
+    ).addTo(map);
+
+    map.fitBounds(
+        routeLine.getBounds(),
+        { padding: [40, 40] }
+    );
 };
