@@ -3,9 +3,17 @@
   "configurations": [
     {
       "type": "java",
-      "name": "UI",
+      "name": "Run UI",
       "request": "launch",
       "mainClass": "com.movement/com.model.UI",
+      "projectName": "distance",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Run Map App",
+      "request": "launch",
+      "mainClass": "com.movement/com.movement.App",
       "projectName": "distance",
       "envFile": "${workspaceFolder}/.env"
     }

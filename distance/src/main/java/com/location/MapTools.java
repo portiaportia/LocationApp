@@ -12,40 +12,41 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
-/** Converts an Address into latitude and longitude coordinates. */
+/**
+ * 
+ * MapTools Provides map api tools
+ */
 public class MapTools {
-    private static final String BASE_URL =
+    private static final String GEOCODING_URL =
             "https://api.openrouteservice.org/geocode/search";
-
     private static final String DIRECTIONS_URL =
-        "https://api.openrouteservice.org/v2/directions/driving-car";
-
-    private static MapTools instance;
-
-    // The API key comes from your .env file / environment variable.
+            "https://api.openrouteservice.org/v2/directions/driving-car";
+    private static MapTools mapTools;
     private final String apiKey = System.getenv("MAP_API_KEY");
-
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
     private MapTools() {
         httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
 
         objectMapper = new ObjectMapper();
     }
 
     public static MapTools getInstance() {
-        if (instance == null) {
-            instance = new MapTools();
+        if(mapTools == null){
+            mapTools = new MapTools();
         }
-
-        return instance;
+        return mapTools;
     }
 
     /**
      * Converts a street address into latitude and longitude.
+     * @param address Street address
+     * @return Coordinates in latitude and longitude
+     * @throws IOException
+     * @throws InterruptedException
      */
     public Coordinates getCoordinates(Address address)
             throws IOException, InterruptedException {
@@ -53,12 +54,12 @@ public class MapTools {
         checkForApiKey();
 
         String encodedAddress = URLEncoder.encode(
-                getConversionString(address),
+                address.toString(),
                 StandardCharsets.UTF_8
         );
 
         URI uri = URI.create(
-                BASE_URL
+                GEOCODING_URL
                         + "?api_key=" + apiKey
                         + "&text=" + encodedAddress
                         + "&boundary.country=USA"
@@ -66,10 +67,10 @@ public class MapTools {
         );
 
         HttpRequest request = HttpRequest.newBuilder(uri)
-            .header("Accept", "application/json")
-            .timeout(Duration.ofSeconds(15))
-            .GET()
-            .build();
+                .header("Accept", "application/json")
+                .timeout(Duration.ofSeconds(15))
+                .GET()
+                .build();
 
         HttpResponse<String> response = httpClient.send(
                 request,
@@ -86,12 +87,78 @@ public class MapTools {
 
         JsonNode bestResult = findBestResult(features);
 
-        return getCoordinates(bestResult);
+        return readCoordinates(bestResult);
     }
 
-    /*
-     * Prefer a real house-address result.
-     * If one is not available, use the API's top match.
+    /**
+     * Finds the shelter with the shortest driving time.
+     * @param startingAddress The address we are driving from
+     * @param shelters The list of shelters we are choosing from
+     * @return The address of the closest shelter
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    public Address findClosestAddress(Address startingAddress, Address[] shelters)
+            throws IOException, InterruptedException {
+
+        Coordinates startingCoordinates = getCoordinates(startingAddress);
+
+        Address closestShelter = null;
+        double shortestTime = Double.MAX_VALUE;
+
+        for (Address shelter : shelters) {
+            Coordinates shelterCoordinates = getCoordinates(shelter);
+
+            double drivingTime = getDrivingTime(
+                    startingCoordinates,
+                    shelterCoordinates
+            );
+
+            if (drivingTime < shortestTime) {
+                shortestTime = drivingTime;
+                closestShelter = shelter;
+            }
+        }
+
+        return closestShelter;
+    }
+
+    /**
+     * Collects the driving directions to the shelter
+     * @param startingAddress The address the route starts at
+     * @param endingAddress The address the route ends at
+     * @return A string array where each item represents a direction on the route
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    public String[] getDrivingDirections(
+            Address startingAddress,
+            Address endingAddress
+    ) throws IOException, InterruptedException {
+
+        Coordinates start = getCoordinates(startingAddress);
+        Coordinates end = getCoordinates(endingAddress);
+
+        JsonNode route = getRoute(start, end);
+        JsonNode steps = route.path("segments").path(0).path("steps");
+
+        String[] directions = new String[steps.size()];
+
+        for (int i = 0; i < steps.size(); i++) {
+            directions[i] = steps.get(i)
+                    .path("instruction")
+                    .asText();
+        }
+
+        return directions;
+    }
+
+    /**
+     * Finds the best version of a coordinate. Based on the address we might not 
+     * be able to find the exact house, but maybe the city
+     * @param featuresThe information about the street address
+     * @return The node representation of the closest address
+     * @throws IOException
      */
     private JsonNode findBestResult(JsonNode features) throws IOException {
         if (!features.isArray() || features.isEmpty()) {
@@ -99,9 +166,9 @@ public class MapTools {
         }
 
         for (JsonNode result : features) {
-            String type = result.path("properties").path("layer").asText();
+            String layer = result.path("properties").path("layer").asText();
 
-            if (type.equals("address")) {
+            if (layer.equals("address")) {
                 return result;
             }
         }
@@ -109,11 +176,13 @@ public class MapTools {
         return features.get(0);
     }
 
-    /*
-     * ORS returns coordinates in this order:
-     * [longitude, latitude]
+    /**
+     * Covert a node into a coordinate object
+     * @param result The node representing the location
+     * @return The coordinates of the node in latitude and longitude
+     * @throws IOException
      */
-    private Coordinates getCoordinates(JsonNode result) throws IOException {
+    private Coordinates readCoordinates(JsonNode result) throws IOException {
         JsonNode coordinates = result.path("geometry").path("coordinates");
 
         if (!coordinates.isArray() || coordinates.size() < 2) {
@@ -126,69 +195,39 @@ public class MapTools {
         return new Coordinates(latitude, longitude);
     }
 
-    private void checkForApiKey() {
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
-                    "MAP_API_KEY environment variable has not been set."
-            );
-        }
-    }
-
-    private String getConversionString(Address address){
-        String street = address.getStreet();
-        String city = address.getCity();
-        String state = address.getState();
-        String zip = address.getZip();
-        return String.format("%s, %s, %s %s", street, city, state, zip);
-    
-    }
-
-        /**
-     * Returns the address with the shortest driving time from the starting address.
+    /**
+     * Calculates the driving time in seconds between two coordinates
+     * @param start Starting location
+     * @param end Ending location
+     * @return The number of seconds
+     * @throws IOException
+     * @throws InterruptedException
      */
-    public Address findClosestAddress(Address startingAddress, Address[] addresses)
+    private double getDrivingTime(Coordinates start, Coordinates end)
             throws IOException, InterruptedException {
 
-        Coordinates start = getCoordinates(startingAddress);
-
-        Address closestAddress = null;
-        double shortestTime = Double.MAX_VALUE;
-
-        for (Address address : addresses) {
-            System.out.println("Checking shelter: " + address);
-
-            Coordinates destination = getCoordinates(address);
-            double drivingTime = getDrivingTime(start, destination);
-
-            if (drivingTime < shortestTime) {
-                shortestTime = drivingTime;
-                closestAddress = address;
-            }
-        }
-
-        return closestAddress;
-    }
-
-    /**
-     * Returns driving time in seconds between two coordinate locations.
-     */
-    private double getDrivingTime(Coordinates start, Coordinates destination)
-        throws IOException, InterruptedException {
-
-        JsonNode route = getRoute(start, destination);
+        JsonNode route = getRoute(start, end);
 
         return route.path("summary").path("duration").asDouble();
     }
 
+    /**
+     * Calculates the route information from one location to the next
+     * @param start Starting location
+     * @param end Ending location
+     * @return A json node representing the route.
+     * @throws IOException
+     * @throws InterruptedException
+     */
     private JsonNode getRoute(Coordinates start, Coordinates end)
-        throws IOException, InterruptedException {
+            throws IOException, InterruptedException {
 
         String requestBody =
                 "{ \"coordinates\": [[" +
-                start.getLongitude() + "," + start.getLatitude() +
-                "],[" +
-                end.getLongitude() + "," + end.getLatitude() +
-                "]], \"instructions\": true, \"language\": \"en\" }";
+                        start.getLongitude() + "," + start.getLatitude() +
+                        "],[" +
+                        end.getLongitude() + "," + end.getLatitude() +
+                        "]], \"instructions\": true, \"language\": \"en\" }";
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(DIRECTIONS_URL))
@@ -213,23 +252,14 @@ public class MapTools {
                 .path(0);
     }
 
-    public String[] getDrivingDirections(Address startingAddress, Address endingAddress)
-        throws IOException, InterruptedException {
-
-        Coordinates start = getCoordinates(startingAddress);
-        Coordinates end = getCoordinates(endingAddress);
-
-        JsonNode route = getRoute(start, end);
-        JsonNode steps = route.path("segments").path(0).path("steps");
-
-        String[] directions = new String[steps.size()];
-
-        for (int i = 0; i < steps.size(); i++) {
-            directions[i] = steps.get(i)
-                    .path("instruction")
-                    .asText();
+    /**
+     * Determine if we have a valid API key in our environment variable.
+     */
+    private void checkForApiKey() {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException(
+                    "MAP_API_KEY environment variable has not been set."
+            );
         }
-
-        return directions;
     }
 }

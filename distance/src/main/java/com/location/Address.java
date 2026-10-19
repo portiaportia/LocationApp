@@ -40,6 +40,6 @@ public class Address {
     }
 
     public String toString() {
-        return street + ", " + city + ", " + state + " " + zip;
+        return String.format("%s, %s, %s %s", street, city, state, zip);
     }
 }

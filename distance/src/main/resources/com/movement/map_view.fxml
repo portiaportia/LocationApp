@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.web.WebView?>
+
+<BorderPane prefHeight="650.0" prefWidth="900.0"
+            xmlns="http://javafx.com/javafx/21.0.2"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.movement.MapController">
+
+    <top>
+        <VBox alignment="CENTER_LEFT" spacing="5.0">
+            <padding>
+                <Insets bottom="12.0" left="15.0" right="15.0" top="15.0" />
+            </padding>
+
+            <children>
+                <Label text="Hurricane Shelter Map"
+                       style="-fx-font-size: 22px; -fx-font-weight: bold;" />
+
+                <Label fx:id="closestShelterLabel"
+                       text="Closest shelter: Loading..." />
+            </children>
+        </VBox>
+    </top>
+
+    <center>
+        <WebView fx:id="webView" />
+    </center>
+
+</BorderPane>
