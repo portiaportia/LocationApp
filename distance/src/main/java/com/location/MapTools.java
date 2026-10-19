@@ -18,11 +18,13 @@ import java.time.Duration;
  */
 public class MapTools {
     private static final String GEOCODING_URL =
-            "https://api.openrouteservice.org/geocode/search";
+        "https://api.heigit.org/pelias/v1/search";
+
     private static final String DIRECTIONS_URL =
-            "https://api.openrouteservice.org/v2/directions/driving-car";
+        "https://api.heigit.org/openrouteservice/v2/directions/driving-car";
+
     private static final String ROUTE_GEOJSON_URL =
-        "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
+        "https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson";
     private static MapTools mapTools;
     private final String apiKey = System.getenv("MAP_API_KEY");
     private final HttpClient httpClient;
@@ -80,7 +82,11 @@ public class MapTools {
         );
 
         if (response.statusCode() != 200) {
-            throw new IOException("Could not convert the address.");
+            throw new IOException(
+                    "Could not convert: " + address
+                            + " (HTTP " + response.statusCode() + ")"
+                            + "\n" + response.body()
+            );
         }
 
         JsonNode features = objectMapper
